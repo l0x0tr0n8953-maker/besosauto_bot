@@ -1,58 +1,26 @@
 import logging
 
-import os
+from aiogram import Bot, Dispatcher, executor, types
 
-import asyncio
+API_TOKEN = "ТВОЙ_ТОКЕН"
 
-from aiogram import Bot, Dispatcher, types
-
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-
-from aiogram.utils import executor
+ADMIN_ID = 413820160  # твой Telegram ID
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=API_TOKEN)
 
 dp = Dispatcher(bot)
 
 users_data = {}
 
-# 📱 КНОПКА НОМЕРА
+# Кнопка отправки телефона
 
-phone_kb = ReplyKeyboardMarkup(resize_keyboard=True)
+phone_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-phone_kb.add(KeyboardButton("📱 Отправить номер", request_contact=True))
+phone_kb.add(types.KeyboardButton("📱 Отправить номер", request_contact=True))
 
-# 💰 КНОПКИ БЮДЖЕТА
-
-budget_kb = InlineKeyboardMarkup(row_width=2)
-
-budget_kb.add(
-
-    InlineKeyboardButton("💰 до 2 млн", callback_data="budget_2"),
-
-    InlineKeyboardButton("💰 2–3 млн", callback_data="budget_3"),
-
-    InlineKeyboardButton("💰 3+ млн", callback_data="budget_4"),
-
-)
-
-# 📞 КНОПКА ПОЗВОНИТЬ
-
-def call_kb(phone):
-
-    kb = InlineKeyboardMarkup()
-
-    kb.add(InlineKeyboardButton("📞 Позвонить сразу", url=f"tel:{phone}"))
-
-    return kb
-
-# 🚀 СТАРТ
+# СТАРТ
 
 @dp.message_handler(commands=['start'])
 
@@ -60,39 +28,9 @@ async def start(message: types.Message):
 
     users_data[message.from_user.id] = {"step": "brand"}
 
-    source = message.get_args()
-
-    if source:
-
-        nice_source = source.replace("_", " ").title()
-
-        users_data[message.from_user.id]["source"] = nice_source
-
-        parts = source.split("_")
-
-        if len(parts) >= 2:
-
-            users_data[message.from_user.id]["brand"] = parts[0].capitalize()
-
-            users_data[message.from_user.id]["model"] = parts[1].capitalize()
-
-            users_data[message.from_user.id]["step"] = "budget"
-
-            await message.answer(
-
-                f"🚗 Вы выбрали: {parts[0].capitalize()} {parts[1].capitalize()}"
-
-            )
-
-            await message.answer("💰 Выберите бюджет:", reply_markup=budget_kb)
-
-            return
-
-    users_data[message.from_user.id]["source"] = "Не указано"
-
     await message.answer("🚗 Какая марка авто интересует?")
 
-# 🔄 ОСНОВНОЙ ОБРАБОТЧИК
+# ОСНОВНАЯ ЛОГИКА
 
 @dp.message_handler()
 
@@ -120,7 +58,13 @@ async def process(message: types.Message):
 
         users_data[user_id]["step"] = "budget"
 
-        await message.answer("💰 Выберите бюджет:", reply_markup=budget_kb)
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+        kb.add("💰 до 2 млн", "💰 2–3 млн")
+
+        kb.add("💰 3+ млн")
+
+        await message.answer("💰 Выберите бюджет:", reply_markup=kb)
 
     elif step == "budget":
 
@@ -128,41 +72,23 @@ async def process(message: types.Message):
 
         users_data[user_id]["step"] = "phone"
 
-        await message.answer("📱 Отправьте номер", reply_markup=phone_kb)
+        await message.answer(
 
-# 💰 ОБРАБОТКА БЮДЖЕТА
+            "📱 Отправьте номер телефона",
 
-@dp.callback_query_handler(lambda c: c.data.startswith("budget"))
+            reply_markup=phone_kb
 
-async def process_budget(callback_query: types.CallbackQuery):
+        )
 
-    user_id = callback_query.from_user.id
-
-    mapping = {
-
-        "budget_2": "до 2 млн",
-
-        "budget_3": "2–3 млн",
-
-        "budget_4": "3+ млн"
-
-    }
-
-    users_data[user_id]["budget"] = mapping.get(callback_query.data)
-
-    users_data[user_id]["step"] = "phone"
-
-    await bot.send_message(user_id, "📱 Отправьте номер телефона", reply_markup=phone_kb)
-
-# 📲 ПОЛУЧЕНИЕ ТЕЛЕФОНА
+# ПОЛУЧЕНИЕ ТЕЛЕФОНА
 
 @dp.message_handler(content_types=['contact'])
 
 async def get_phone(message: types.Message):
 
-    user = message.from_user
+    user_id = message.from_user.id
 
-    data = users_data.get(user.id, {})
+    data = users_data.get(user_id, {})
 
     phone = message.contact.phone_number
 
@@ -170,15 +96,13 @@ async def get_phone(message: types.Message):
 
 🚗 Новая заявка!
 
-📌 Источник: {data.get("source")}
+👤 @{message.from_user.username}
 
-👤 @{user.username}
+🆔 {user_id}
 
-🆔 {user.id}
+🚘 Марка: {data.get("brand")}
 
-🚗 Марка: {data.get("brand")}
-
-🚗 Модель: {data.get("model")}
+🚘 Модель: {data.get("model")}
 
 💰 Бюджет: {data.get("budget")}
 
@@ -186,48 +110,15 @@ async def get_phone(message: types.Message):
 
 """
 
+    # Отправляем админу БЕЗ inline-кнопок
+
     await bot.send_message(ADMIN_ID, text)
 
-    await bot.send_message(ADMIN_ID, "Связаться:", reply_markup=call_kb(phone))
+    await message.answer("✅ Заявка отправлена!")
 
-    await message.answer(
+    users_data.pop(user_id, None)
 
-        "✅ Заявка отправлена! Скоро с вами свяжемся.",
-
-        reply_markup=types.ReplyKeyboardRemove()
-
-    )
-
-    users_data.pop(user.id, None)
-
-# ⏱ АВТОДОЖИМ
-async def follow_up(user_id):
-
-    await asyncio.sleep(120)
-
-    if user_id in users_data:
-
-        await bot.send_message(
-
-            user_id,
-
-            "👋 Вы не оставили номер.\nМогу подобрать авто под ваш бюджет 🚗"
-
-        )
-
-# 🧠 ТРИГГЕР ДОЖИМА
-
-@dp.message_handler(lambda message: message.from_user.id in users_data)
-
-async def fallback(message: types.Message):
-
-    user_id = message.from_user.id
-
-    if "budget" not in users_data[user_id]:
-
-        asyncio.create_task(follow_up(user_id))
-
-# 🚀 ЗАПУСК
+# ЗАПУСК (ЭТО ВАЖНО!)
 
 if __name__ == "__main__":
 
