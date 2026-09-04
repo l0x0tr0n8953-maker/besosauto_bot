@@ -190,6 +190,6 @@ async def fallback(message: types.Message):
 
         asyncio.create_task(follow_up(user_id))
 
-if name == "__main__":
+if __name__ == "__main__":
 
     executor.start_polling(dp, skip_updates=True)
