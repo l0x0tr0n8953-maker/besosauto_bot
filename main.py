@@ -1,11 +1,18 @@
 import logging
+
+import asyncio
+
 import os
 
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, types
+
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+from aiogram.utils import executor
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 
-ADMIN_ID = 413820160  # мой Telegram ID
+ADMIN_ID = 413820160  # ← ВСТАВЬ СВОЙ ID
 
 logging.basicConfig(level=logging.INFO)
 
@@ -15,23 +22,31 @@ dp = Dispatcher(bot)
 
 users_data = {}
 
-# Кнопка отправки телефона
+# 📱 Кнопка отправки номера
 
-phone_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+phone_kb = ReplyKeyboardMarkup(resize_keyboard=True)
 
-phone_kb.add(types.KeyboardButton("📱 Отправить номер", request_contact=True))
+phone_kb.add(KeyboardButton("📱 Отправить номер", request_contact=True))
 
-# СТАРТ
+# 🚀 СТАРТ
 
 @dp.message_handler(commands=['start'])
 
 async def start(message: types.Message):
 
-    users_data[message.from_user.id] = {"step": "brand"}
+    user_id = message.from_user.id
+
+    users_data[user_id] = {"step": "brand"}
+
+    # 🔥 запускаем напоминания
+
+    asyncio.create_task(follow_up(user_id, 600))   # 10 мин
+
+    asyncio.create_task(follow_up(user_id, 3600))  # 1 час
 
     await message.answer("🚗 Какая марка авто интересует?")
 
-# ОСНОВНАЯ ЛОГИКА
+# 💬 ОБРАБОТКА ШАГОВ
 
 @dp.message_handler()
 
@@ -51,7 +66,7 @@ async def process(message: types.Message):
 
         users_data[user_id]["step"] = "model"
 
-        await message.answer("🚗 Какая модель?")
+        await message.answer("🚘 Какая модель?")
 
     elif step == "model":
 
@@ -59,7 +74,7 @@ async def process(message: types.Message):
 
         users_data[user_id]["step"] = "budget"
 
-        kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        kb = ReplyKeyboardMarkup(resize_keyboard=True)
 
         kb.add("💰 до 2 млн", "💰 2–3 млн")
 
@@ -73,15 +88,9 @@ async def process(message: types.Message):
 
         users_data[user_id]["step"] = "phone"
 
-        await message.answer(
+        await message.answer("📱 Отправьте номер телефона", reply_markup=phone_kb)
 
-            "📱 Отправьте номер телефона",
-
-            reply_markup=phone_kb
-
-        )
-
-# ПОЛУЧЕНИЕ ТЕЛЕФОНА
+# 📞 ПОЛУЧЕНИЕ НОМЕРА
 
 @dp.message_handler(content_types=['contact'])
 
@@ -89,52 +98,63 @@ async def get_phone(message: types.Message):
 
     user_id = message.from_user.id
 
-    data = users_data.get(user_id, {})
+    if user_id not in users_data:
+
+        return
 
     phone = message.contact.phone_number
 
-    text = f"""
+    users_data[user_id]["phone"] = phone
 
-🚗 Новая заявка!
+    data = users_data[user_id]
 
-👤 @{message.from_user.username}
+    text = (
 
-🆔 {user_id}
+        f"🚗 Новая заявка!\n\n"
 
-🚘 Марка: {data.get("brand")}
+        f"👤 @{message.from_user.username}\n"
 
-🚘 Модель: {data.get("model")}
+        f"🆔 {user_id}\n\n"
 
-💰 Бюджет: {data.get("budget")}
+        f"🚘 Марка: {data.get('brand')}\n"
 
-📱 Телефон: {phone}
+        f"🚘 Модель: {data.get('model')}\n"
 
-"""
+        f"💰 Бюджет: {data.get('budget')}\n"
 
-    # Отправляем админу БЕЗ inline-кнопок
+        f"📱 Телефон: {phone}"
+
+    )
+
+    # 📩 Отправка админу
 
     await bot.send_message(ADMIN_ID, text)
 
-    await message.answer("✅ Заявка отправлена! Скоро с Вами свяжемся.")
+    # ✅ Ответ пользователю
+
+    await message.answer("✅ Заявка отправлена! Мы скоро свяжемся с вами.")
+
+    # 🧹 очищаем пользователя (чтобы не приходили напоминания)
 
     users_data.pop(user_id, None)
 
-#Дожим 
-    async def follow_up(user_id):
+# ⏰ FOLLOW-UP (напоминания)
 
-    await asyncio.sleep(120)
+async def follow_up(user_id, delay):
 
-    if user_id in users_data:
+    await asyncio.sleep(delay)
+
+    if user_id in users_data and "phone" not in users_data[user_id]:
 
         await bot.send_message(
 
             user_id,
 
-            "👋 Вы не оставили номер.\nМогу подобрать авто под Ваш бюджет 🚗"
+            "👋 Вы не оставили номер.\nМогу подобрать авто под ваш бюджет 🚗"
 
         )
 
-# ЗАПУСК (ЭТО ВАЖНО!)
+# ▶️ ЗАПУСК
 
 if __name__ == "__main__":
 
