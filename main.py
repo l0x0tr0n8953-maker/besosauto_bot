@@ -22,13 +22,13 @@ dp = Dispatcher(bot)
 
 users_data = {}
 
-# 📱 Кнопка отправки номера
+# 📱 кнопка телефона
 
 phone_kb = ReplyKeyboardMarkup(resize_keyboard=True)
 
 phone_kb.add(KeyboardButton("📱 Отправить номер", request_contact=True))
 
-# 🚀 СТАРТ (с поддержкой кнопки из канала)
+# 🚀 СТАРТ
 
 @dp.message_handler(commands=['start'])
 
@@ -36,37 +36,39 @@ async def start(message: types.Message):
 
     user_id = message.from_user.id
 
-    args = message.get_args()  # ← ВАЖНО
+    # ❗ УБИВАЕМ старые таймеры
 
-    users_data[user_id] = {"step": "brand"}
+    if user_id in users_data:
 
-    # 🔥 если пришел с кнопки
+        for task in users_data[user_id].get("tasks", []):
 
-    if args:
+            task.cancel()
 
-        users_data[user_id]["car"] = args
+    # получаем источник
 
-        await message.answer(
+    source = message.get_args() or "unknown"
 
-            "👋 Вы заинтересовались данным авто.\n"
+    users_data[user_id] = {
 
-            "Давайте подберем лучший вариант 🚗\n\n"
+        "step": "brand",
 
-            "🚗 Какая марка авто интересует?"
+        "source": source,
 
-        )
+        "tasks": []
 
-    else:
+    }
 
-        await message.answer("🚗 Какая марка авто интересует?")
+    # ✅ запускаем 2 напоминания (не больше!)
 
-    # ⏰ напоминания
+    task1 = asyncio.create_task(follow_up(user_id, 600))    # 10 мин
 
-    asyncio.create_task(follow_up(user_id, 600))
+    task2 = asyncio.create_task(follow_up(user_id, 3600))   # 1 час
 
-    asyncio.create_task(follow_up(user_id, 3600))
+    users_data[user_id]["tasks"] = [task1, task2]
 
-# 💬 ОБРАБОТКА ШАГОВ
+    await message.answer("🚗 Какая марка авто интересует?")
+
+# 💬 ОБРАБОТКА
 
 @dp.message_handler()
 
@@ -78,7 +80,7 @@ async def process(message: types.Message):
 
         return
 
-    step = users_data[user_id].get("step")
+    step = users_data[user_id]["step"]
 
     if step == "brand":
 
@@ -110,7 +112,7 @@ async def process(message: types.Message):
 
         await message.answer("📱 Отправьте номер телефона", reply_markup=phone_kb)
 
-# 📞 ПОЛУЧЕНИЕ НОМЕРА (кнопка)
+# 📞 ПОЛУЧЕНИЕ НОМЕРА
 
 @dp.message_handler(content_types=['contact'])
 
@@ -144,7 +146,7 @@ async def get_phone(message: types.Message):
 
         f"📱 Телефон: {phone}\n"
 
-        f"🔗 Источник: {data.get('car', 'не указан')}"
+        f"🔗 Источник: {data.get('source')}"
 
     )
 
@@ -152,59 +154,23 @@ async def get_phone(message: types.Message):
 
     await message.answer("✅ Заявка отправлена! Мы скоро свяжемся с вами.")
 
-    users_data.pop(user_id, None)
+    # ❗ УБИВАЕМ таймеры после заявки
 
-# 📞 ЕСЛИ ВВЕЛИ НОМЕР ВРУЧНУЮ
+    for task in data.get("tasks", []):
 
-@dp.message_handler(lambda message: message.text and message.text.startswith("+"))
-
-async def manual_phone(message: types.Message):
-
-    user_id = message.from_user.id
-
-    if user_id not in users_data:
-
-        return
-
-    users_data[user_id]["phone"] = message.text
-
-    data = users_data[user_id]
-
-    text = (
-
-        f"🚗 Новая заявка!\n\n"
-
-        f"👤 @{message.from_user.username}\n"
-
-        f"🆔 {user_id}\n\n"
-
-        f"🚘 Марка: {data.get('brand')}\n"
-
-        f"🚘 Модель: {data.get('model')}\n"
-
-        f"💰 Бюджет: {data.get('budget')}\n"
-
-        f"📱 Телефон: {message.text}\n"
-
-        f"🔗 Источник: {data.get('car', 'не указан')}"
-
-    )
-
-    await bot.send_message(ADMIN_ID, text)
-
-    await message.answer("✅ Заявка отправлена!")
+        task.cancel()
 
     users_data.pop(user_id, None)
 
-# ⏰ НАПОМИНАНИЯ
+# ⏰ НАПОМИНАНИЯ (умные)
 
 async def follow_up(user_id, delay):
 
-    await asyncio.sleep(delay)
+    try:
 
-    if user_id in users_data and "phone" not in users_data[user_id]:
+        await asyncio.sleep(delay)
 
-        try:
+        if user_id in users_data and "phone" not in users_data[user_id]:
 
             await bot.send_message(
 
@@ -214,9 +180,9 @@ async def follow_up(user_id, delay):
 
             )
 
-        except:
+    except asyncio.CancelledError:
 
-            pass
+        pass  # нормально, если отменили
 
 # ▶️ ЗАПУСК
 
