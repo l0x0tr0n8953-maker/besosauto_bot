@@ -12,7 +12,7 @@ from aiogram.utils import executor
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 
-ADMIN_ID = 413820160  # ← ВСТАВЬ СВОЙ ID
+ADMIN_ID = 413820160
 
 logging.basicConfig(level=logging.INFO)
 
@@ -28,7 +28,7 @@ phone_kb = ReplyKeyboardMarkup(resize_keyboard=True)
 
 phone_kb.add(KeyboardButton("📱 Отправить номер", request_contact=True))
 
-# 🚀 СТАРТ
+# 🚀 СТАРТ (с поддержкой кнопки из канала)
 
 @dp.message_handler(commands=['start'])
 
@@ -36,15 +36,35 @@ async def start(message: types.Message):
 
     user_id = message.from_user.id
 
+    args = message.get_args()  # ← ВАЖНО
+
     users_data[user_id] = {"step": "brand"}
 
-    # 🔥 запускаем напоминания
+    # 🔥 если пришел с кнопки
 
-    asyncio.create_task(follow_up(user_id, 600))   # 10 мин
+    if args:
 
-    asyncio.create_task(follow_up(user_id, 3600))  # 1 час
+        users_data[user_id]["car"] = args
 
-    await message.answer("🚗 Какая марка авто интересует?")
+        await message.answer(
+
+            "👋 Вы заинтересовались данным авто.\n"
+
+            "Давайте подберем лучший вариант 🚗\n\n"
+
+            "🚗 Какая марка авто интересует?"
+
+        )
+
+    else:
+
+        await message.answer("🚗 Какая марка авто интересует?")
+
+    # ⏰ напоминания
+
+    asyncio.create_task(follow_up(user_id, 600))
+
+    asyncio.create_task(follow_up(user_id, 3600))
 
 # 💬 ОБРАБОТКА ШАГОВ
 
@@ -90,7 +110,7 @@ async def process(message: types.Message):
 
         await message.answer("📱 Отправьте номер телефона", reply_markup=phone_kb)
 
-# 📞 ПОЛУЧЕНИЕ НОМЕРА
+# 📞 ПОЛУЧЕНИЕ НОМЕРА (кнопка)
 
 @dp.message_handler(content_types=['contact'])
 
@@ -122,23 +142,61 @@ async def get_phone(message: types.Message):
 
         f"💰 Бюджет: {data.get('budget')}\n"
 
-        f"📱 Телефон: {phone}"
+        f"📱 Телефон: {phone}\n"
+
+        f"🔗 Источник: {data.get('car', 'не указан')}"
 
     )
 
-    # 📩 Отправка админу
-
     await bot.send_message(ADMIN_ID, text)
-
-    # ✅ Ответ пользователю
 
     await message.answer("✅ Заявка отправлена! Мы скоро свяжемся с вами.")
 
-    # 🧹 очищаем пользователя (чтобы не приходили напоминания)
+    users_data.pop(user_id, None)
+
+# 📞 ЕСЛИ ВВЕЛИ НОМЕР ВРУЧНУЮ
+
+@dp.message_handler(lambda message: message.text and message.text.startswith("+"))
+
+async def manual_phone(message: types.Message):
+
+    user_id = message.from_user.id
+
+    if user_id not in users_data:
+
+        return
+
+    users_data[user_id]["phone"] = message.text
+
+    data = users_data[user_id]
+
+    text = (
+
+        f"🚗 Новая заявка!\n\n"
+
+        f"👤 @{message.from_user.username}\n"
+
+        f"🆔 {user_id}\n\n"
+
+        f"🚘 Марка: {data.get('brand')}\n"
+
+        f"🚘 Модель: {data.get('model')}\n"
+
+        f"💰 Бюджет: {data.get('budget')}\n"
+
+        f"📱 Телефон: {message.text}\n"
+
+        f"🔗 Источник: {data.get('car', 'не указан')}"
+
+    )
+
+    await bot.send_message(ADMIN_ID, text)
+
+    await message.answer("✅ Заявка отправлена!")
 
     users_data.pop(user_id, None)
 
-# ⏰ FOLLOW-UP (напоминания)
+# ⏰ НАПОМИНАНИЯ
 
 async def follow_up(user_id, delay):
 
@@ -146,13 +204,19 @@ async def follow_up(user_id, delay):
 
     if user_id in users_data and "phone" not in users_data[user_id]:
 
-        await bot.send_message(
+        try:
 
-            user_id,
+            await bot.send_message(
 
-            "👋 Вы не оставили номер.\nМогу подобрать авто под ваш бюджет 🚗"
+                user_id,
 
-        )
+                "👋 Вы не оставили номер.\nМогу подобрать авто под ваш бюджет 🚗"
+
+            )
+
+        except:
+
+            pass
 
 # ▶️ ЗАПУСК
 
