@@ -22,13 +22,13 @@ dp = Dispatcher(bot)
 
 users_data = {}
 
-# 📱 Кнопка отправки номера
+# 📱 КНОПКА НОМЕРА
 
 phone_kb = ReplyKeyboardMarkup(resize_keyboard=True)
 
-phone_kb.add(KeyboardButton("📲 Отправить номер", request_contact=True))
+phone_kb.add(KeyboardButton("📱 Отправить номер", request_contact=True))
 
-# 💰 Кнопки бюджета
+# 💰 КНОПКИ БЮДЖЕТА
 
 budget_kb = InlineKeyboardMarkup(row_width=2)
 
@@ -42,13 +42,13 @@ budget_kb.add(
 
 )
 
-# 📞 Кнопка связаться
+# 📞 КНОПКА ПОЗВОНИТЬ
 
 def call_kb(phone):
 
     kb = InlineKeyboardMarkup()
 
-    kb.add(InlineKeyboardButton("📞 Позвонить сразу", url=f"tel:{phone}"))
+    kb.add(InlineKeyboardButton("📞 Позвонить", url=f"tel:{phone}"))
 
     return kb
 
@@ -58,27 +58,29 @@ def call_kb(phone):
 
 async def start(message: types.Message):
 
-    users_data[message.from_user.id] = {}
+    user_id = message.from_user.id
+
+    users_data[user_id] = {"step": "brand"}
 
     source = message.get_args()
 
     if source:
 
-        # делаем красивое название
-
         nice_source = source.replace("_", " ").title()
 
-        users_data[message.from_user.id]["source"] = nice_source
-
-        # авто-подстановка марки и модели
+        users_data[user_id]["source"] = nice_source
 
         parts = source.split("_")
 
+        # авто-подстановка
+
         if len(parts) >= 2:
 
-            users_data[message.from_user.id]["brand"] = parts[0].capitalize()
+            users_data[user_id]["brand"] = parts[0].capitalize()
 
-            users_data[message.from_user.id]["model"] = parts[1].capitalize()
+            users_data[user_id]["model"] = parts[1].capitalize()
+
+            users_data[user_id]["step"] = "budget"
 
             await message.answer(
 
@@ -86,17 +88,59 @@ async def start(message: types.Message):
 
             )
 
-    else:
+            await message.answer("💰 Выберите бюджет:", reply_markup=budget_kb)
 
-        users_data[message.from_user.id]["source"] = "Не указано"
+            return
 
-        await message.answer("🚗 Какая марка авто интересует?")
+    users_data[user_id]["source"] = "Не указано"
+
+    await message.answer("🚗 Какая марка авто интересует?")
+
+# 🔥 ОБРАБОТКА ШАГОВ
+
+@dp.message_handler()
+
+async def process(message: types.Message):
+
+    user_id = message.from_user.id
+
+    if user_id not in users_data:
 
         return
 
-    await message.answer("💰 Выберите бюджет:", reply_markup=budget_kb)
+    step = users_data[user_id].get("step")
 
-# 💰 ОБРАБОТКА БЮДЖЕТА
+    # Марка
+
+    if step == "brand":
+
+        users_data[user_id]["brand"] = message.text
+
+        users_data[user_id]["step"] = "model"
+
+        await message.answer("🚘 Модель?")
+
+    # Модель
+
+    elif step == "model":
+
+        users_data[user_id]["model"] = message.text
+
+        users_data[user_id]["step"] = "budget"
+
+        await message.answer("💰 Выберите бюджет:", reply_markup=budget_kb)
+
+    # Если бюджет текстом
+
+    elif step == "budget":
+
+        users_data[user_id]["budget"] = message.text
+
+        users_data[user_id]["step"] = "phone"
+
+        await message.answer("📱 Отправьте номер", reply_markup=phone_kb)
+
+# 💰 ОБРАБОТКА КНОПОК БЮДЖЕТА
 
 @dp.callback_query_handler(lambda c: c.data.startswith("budget"))
 
@@ -110,15 +154,17 @@ async def process_budget(callback_query: types.CallbackQuery):
 
         "budget_3": "2–3 млн",
 
-        "budget_4": "3+ млн"
+        "budget_4": "3+ млн",
 
     }
 
     users_data[user_id]["budget"] = mapping.get(callback_query.data)
 
-    await bot.send_message(user_id, "📲 Отправьте номер телефона", reply_markup=phone_kb)
+    users_data[user_id]["step"] = "phone"
 
-# 📞 ПОЛУЧЕНИЕ ТЕЛЕФОНА
+    await bot.send_message(user_id, "📱 Отправьте номер телефона", reply_markup=phone_kb)
+
+# 📱 ПОЛУЧЕНИЕ ТЕЛЕФОНА
 
 @dp.message_handler(content_types=['contact'])
 
@@ -126,7 +172,9 @@ async def get_phone(message: types.Message):
 
     user = message.from_user
 
-    data = users_data.get(user.id, {})
+    user_id = user.id
+
+    data = users_data.get(user_id, {})
 
     phone = message.contact.phone_number
 
@@ -140,13 +188,13 @@ async def get_phone(message: types.Message):
 
 🆔 {user.id}
 
-Марка: {data.get("brand")}
+🚗 Марка: {data.get("brand")}
 
-Модель: {data.get("model")}
+🚘 Модель: {data.get("model")}
 
-Бюджет: {data.get("budget")}
+💰 Бюджет: {data.get("budget")}
 
-Телефон: {phone}
+📱 Телефон: {phone}
 
 """
 
@@ -161,14 +209,13 @@ async def get_phone(message: types.Message):
         reply_markup=types.ReplyKeyboardRemove()
 
     )
+    users_data.pop(user_id, None)
 
-    users_data.pop(user.id, None)
-
-# 🔁 АВТОДОЖИМ
+# ⏱ АВТОДОЖИМ
 
 async def follow_up(user_id):
 
-    await asyncio.sleep(60)
+    await asyncio.sleep(120)
 
     if user_id in users_data:
 
@@ -180,16 +227,16 @@ async def follow_up(user_id):
 
         )
 
-@dp.message_handler()
+# fallback (не мешает логике)
+
+@dp.message_handler(lambda message: message.from_user.id not in users_data)
 
 async def fallback(message: types.Message):
 
-    user_id = message.from_user.id
+    pass
 
-    if user_id in users_data and "budget" not in users_data[user_id]:
+# 🚀 ЗАПУСК
 
-        asyncio.create_task(follow_up(user_id))
-
-if __name__ == "__main__":
+if name == "__main__":
 
     executor.start_polling(dp, skip_updates=True)
