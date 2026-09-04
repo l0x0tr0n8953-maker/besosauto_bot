@@ -10,9 +10,9 @@ from aiogram.utils import executor
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("8676542732:AAH-1hbRN3CgTjJ_dnZmyH50qJrDVYDV7cE")
 
-ADMIN_ID = int(os.getenv("ADMIN_ID","0"))
+ADMIN_ID = int(os.getenv("413820160","0"))
 
 bot = Bot(token=BOT_TOKEN)
 
