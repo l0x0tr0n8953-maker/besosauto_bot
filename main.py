@@ -1,8 +1,9 @@
 import logging
+import os
 
 from aiogram import Bot, Dispatcher, executor, types
 
-API_TOKEN = "ТВОЙ_ТОКЕН"
+API_TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_ID = 413820160  # твой Telegram ID
 
