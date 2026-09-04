@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, executor, types
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 
-ADMIN_ID = 413820160  # твой Telegram ID
+ADMIN_ID = 413820160  # мой Telegram ID
 
 logging.basicConfig(level=logging.INFO)
 
@@ -115,9 +115,24 @@ async def get_phone(message: types.Message):
 
     await bot.send_message(ADMIN_ID, text)
 
-    await message.answer("✅ Заявка отправлена!")
+    await message.answer("✅ Заявка отправлена! Скоро с Вами свяжемся.")
 
     users_data.pop(user_id, None)
+
+#Дожим 
+    async def follow_up(user_id):
+
+    await asyncio.sleep(120)
+
+    if user_id in users_data:
+
+        await bot.send_message(
+
+            user_id,
+
+            "👋 Вы не оставили номер.\nМогу подобрать авто под Ваш бюджет 🚗"
+
+        )
 
 # ЗАПУСК (ЭТО ВАЖНО!)
 
